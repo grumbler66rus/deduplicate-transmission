@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+
+use Transmission::Client;
+use Getopt::Long qw(GetOptions);
+Getopt::Long::Configure qw(gnu_getopt);
+
+(my $name=$0)=~s,.*[/\\],,;
+# Declarations
+my $USAGE = "$name - Control the doubles of the torrent seeds on two Transmissions (torrent clients).\n\nUsage:\n\t$name [--remove|-r] login:password\@mainhost login:password\@secondhost\n where mainhost is a host where double-torrent will be stopped or removed.\n\n";
+my %tlist; # Torrents list: keys is torrent hashes, values is array( host ) where host is hash-array: hostname/IP => (id, name, comment)
+my $remove; # the option "--remove" or "-r"
+my @host;
+my @login;
+my @pwd;
+
+if( !GetOptions('remove|r' => \$remove) || $#ARGV!=1 ){ die $USAGE;}
+
+# Collect data
+for(my $i=0;$i<=$#ARGV;$i++){
+ if( $ARGV[$i] =~ /^([[:alnum:]_+=-]+):(.+)@([[:alnum:].:-]+)$/ ){
+   push(@login,$1);
+   push(@pwd,$2);
+   push(@host,$3);
+ } else {die $USAGE;}
+ print "Read torrents from the $host[$i]: ";
+ my $client = Transmission::Client->new(url=>"http://$host[$i]:9091/transmission/rpc", username=>$login[$i], password=>$pwd[$i]);
+ my @t = $client->read_torrents;
+ my $err=$client->{error};
+ if( length($err)>0 ){ print $err, "\n" } else{ print "OK $#{ $client->torrents }\n" };
+ foreach my $th (@{ $client->torrents }) {
+   my %torrent=%{$th};
+  my @t=($host[$i],$torrent{id},$torrent{percent_done},$torrent{name},$torrent{comment},$torrent{download_dir});
+  $tlist{$torrent{"hash_string"}}[$i]=\@t;
+ }
+}
+
+# Select and output
+my $client = Transmission::Client->new(url=>"http://$host[0]:9091/transmission/rpc", username=>$login[0], password=>$pwd[0]);
+foreach my $x (keys %tlist){
+ if( ($tlist{$x}[0][1] > 0) and ($tlist{$x}[1][1] > 0) and ($tlist{$x}[0][2]<=$tlist{$x}[1][2]) ){
+  print "\n$tlist{$x}[1][3] : $tlist{$x}[0][4] hash $x, $tlist{$x}[0][5]\n";
+  print "$tlist{$x}[0][0] $tlist{$x}[0][1] ",($tlist{$x}[0][2]*100),"\%, $tlist{$x}[1][0] $tlist{$x}[1][1] ",($tlist{$x}[1][2]*100),"\%\n";
+  if( $remove ){
+   print "Remove from $host[0]...";
+   $client->remove( ids => ($x), delete_local_data => true ) and print "OK\n" or print "Error: $client->{error}\n"
+  } else {
+   print "Stop on $host[0]...";
+   $client->stop( ids => ($x) ) and print "OK\n" or print "Error: $client->{error}\n"
+  }
+ }
+}
