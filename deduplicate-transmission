@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-
+#$Id$
 use Transmission::Client;
 use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
